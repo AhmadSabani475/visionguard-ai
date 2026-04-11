@@ -1,0 +1,65 @@
+// Prisma Schema for VisionGuard AI
+// Database: MongoDB Atlas
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// 1. Model User (Auth & Identity)
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String?
+  email         String    @unique
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  
+  // Relasi
+  sessions      MonitoringSession[]
+  settings      UserSettings?
+}
+
+// 2. Model UserSettings (Preferensi User)
+model UserSettings {
+  id                 String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String  @unique @db.ObjectId
+  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  soundEnabled       Boolean @default(true)
+  visualAlertEnabled Boolean @default(true)
+  sensitivity        Int     @default(25) // Threshold px yang kita bahas
+  alertCooldown      Int     @default(3)  // Jeda antar suara (detik)
+}
+
+// 3. Model MonitoringSession (Data Sesi)
+model MonitoringSession {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String   @db.ObjectId
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  startTime          DateTime @default(now())
+  endTime            DateTime?
+  duration           Int      @default(0) // Total detik
+  goodPostureSeconds Int      @default(0)
+  badPostureSeconds  Int      @default(0)
+  avgScore           Float?
+  
+  // Relasi ke Alert detail
+  alerts             PostureAlert[]
+}
+
+// 4. Model PostureAlert (Log Detail Pelanggaran)
+model PostureAlert {
+  id           String            @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId    String            @db.ObjectId
+  session      MonitoringSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  timestamp    DateTime          @default(now())
+  type         String            // "Neck Slouch" atau "Shoulder Lean"
+  description  String
+}
