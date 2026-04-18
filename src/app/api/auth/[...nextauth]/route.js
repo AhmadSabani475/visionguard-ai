@@ -11,6 +11,7 @@ export const authOptions = {
         email: { label: "Email", type: "email", placeholder: "email@contoh.com" },
         password: { label: "Password", type: "password" }
       },
+      secret: "bebas",
       async authorize(credentials) {
         // 1. Cek apakah email dan password diisi
         if (!credentials?.email || !credentials?.password) {
@@ -42,6 +43,13 @@ export const authOptions = {
       }
     })
   ],
+
+  pages: {
+    signIn: "/login", // Sesuaikan dengan folder halaman login kamu
+    error: "/api/auth/error", // Ke halaman error default atau custom
+  },
+  debug: process.env.NODE_ENV === "development",
+
   session: {
     strategy: "jwt", // Wajib "jwt" jika pakai Credentials Provider
   },
