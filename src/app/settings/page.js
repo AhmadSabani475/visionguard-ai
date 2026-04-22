@@ -3,50 +3,43 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSettingsStore } from "@/store/useSettingsStore";
-import { Video, Bell, Eye, Lock } from "lucide-react";
+import { Video, Bell, Lock, AppWindow } from "lucide-react";
 
 export default function SettingsPage() {
   const { 
     resolution, setResolution,
     soundAlert, toggleSound,
-    visualAlert, toggleVisual,
-    screenFlash, toggleScreenFlash,
+    visualAlert, toggleVisual, 
     cooldown, setCooldown,
-    selectedCameraId, setSelectedCameraId, // State kamera baru kita panggil
+    selectedCameraId, setSelectedCameraId, // <-- Dikembalikan!
     resetSettings
   } = useSettingsStore();
 
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [availableCameras, setAvailableCameras] = useState([]); // Menyimpan daftar kamera yang terdeteksi
-
-  // Fungsi untuk mendeteksi kamera keras (hardware)
+  const [availableCameras, setAvailableCameras] = useState([]); // <-- Dikembalikan!
+  
+  // --- FUNGSI DETEKSI KAMERA OTOMATIS (DIKEMBALIKAN) ---
   useEffect(() => {
     let isMounted = true;
 
     const detectCameras = async () => {
       try {
-        // Trik rahasia: Kita panggil kamera sejenak lalu matikan langsung.
-        // Tujuannya agar browser memberikan NAMA ASLI kamera (label), bukan teks kosong.
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         const devices = await navigator.mediaDevices.enumerateDevices();
         
-        // Filter hanya alat yang berupa input video (kamera)
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
         
         if (isMounted) {
           setAvailableCameras(videoDevices);
           
-          // Jika belum ada kamera yang disetting, set otomatis ke kamera pertama yang terdeteksi
           if (!selectedCameraId && videoDevices.length > 0) {
             setSelectedCameraId(videoDevices[0].deviceId);
           }
         }
 
-        // Matikan kembali stream kamera yang cuma kita pakai untuk 'numpang lewat' tadi
         stream.getTracks().forEach(track => track.stop());
-
       } catch (error) {
-        console.warn("Gagal mendeteksi kamera. Pastikan izin kamera diberikan.", error);
+        console.warn("Gagal mendeteksi kamera.", error);
       }
     };
 
@@ -64,6 +57,15 @@ export default function SettingsPage() {
   }, []);
 
   const handleSave = () => {
+    if (visualAlert && "Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          new Notification("VisionGuard AI", { body: "Notifikasi pop-up berhasil diaktifkan!" });
+        } else {
+          alert("Kamu memblokir notifikasi! Silakan klik ikon gembok 🔒 di dekat URL untuk mengizinkannya.");
+        }
+      });
+    }
     alert("Settings berhasil disimpan secara permanen!");
   };
 
@@ -114,14 +116,12 @@ export default function SettingsPage() {
         {/* CAMERA SETTINGS CARD */}
         <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-6">
-            <div className="text-[#3B82F6]">
-              <Video size={24} strokeWidth={2.5} />
-            </div>
+            <div className="text-[#3B82F6]"><Video size={24} strokeWidth={2.5} /></div>
             <h3 className="font-bold text-[#0F172A] text-lg">Camera Settings</h3>
           </div>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* INPUT DEVICE DROPDOWN DINAMIS */}
+            
+            {/* INPUT DEVICE DROPDOWN (DIKEMBALIKAN) */}
             <div>
               <label className="text-xs font-medium text-slate-500 mb-2 block uppercase tracking-wider">Input Device</label>
               <select 
@@ -158,12 +158,9 @@ export default function SettingsPage() {
         {/* ALERT SETTINGS CARD */}
         <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-8">
-            <div className="text-[#3B82F6]">
-              <Bell size={24} strokeWidth={2.5} />
-            </div>
-            <h3 className="font-bold text-[#0F172A] text-lg">Alert Settings</h3>
+            <div className="text-[#3B82F6]"><Bell size={24} strokeWidth={2.5} /></div>
+            <h3 className="font-bold text-[#0F172A] text-lg">Sound Alert</h3>
           </div>
-
           <div className="space-y-8">
             <div className="flex justify-between items-center">
               <div>
@@ -179,84 +176,52 @@ export default function SettingsPage() {
                 <span className="text-[#3B82F6] font-bold text-sm">{cooldown}s</span>
               </div>
               <input 
-                type="range" 
-                min="0" max="10" 
-                value={cooldown}
-                onChange={(e) => setCooldown(e.target.value)}
+                type="range" min="0" max="10" 
+                value={cooldown} onChange={(e) => setCooldown(e.target.value)}
                 className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#3B82F6]" 
               />
-              <div className="flex justify-between text-[11px] font-medium text-slate-400 mt-2 uppercase tracking-wider">
-                <span>Instant</span>
-                <span>10 Seconds</span>
-              </div>
             </div>
           </div>
         </div>
 
-        {/* VISUAL ALERT CARD */}
+        {/* NOTIFICATION POPUP CARD */}
         <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-8">
-            <div className="text-[#3B82F6]">
-              <Eye size={24} strokeWidth={2.5} />
-            </div>
-            <h3 className="font-bold text-[#0F172A] text-lg">Visual Alert</h3>
+            <div className="text-[#3B82F6]"><AppWindow size={24} strokeWidth={2.5} /></div>
+            <h3 className="font-bold text-[#0F172A] text-lg">Desktop Notification</h3>
           </div>
-
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-[#0F172A] mb-1">Screen Flash</h4>
-                <p className="text-sm text-slate-500">Briefly brighten the screen when triggered.</p>
-              </div>
-              <ToggleSwitch checked={screenFlash} onChange={toggleScreenFlash} />
+          <div className="flex justify-between items-center">
+            <div>
+              <h4 className="font-bold text-[#0F172A] mb-1">System Pop-up Alert</h4>
+              <p className="text-sm text-slate-500">Munculkan peringatan dari sistem komputer meski browser di-minimize.</p>
             </div>
-
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="font-bold text-[#0F172A] mb-1">Red Border Overlay</h4>
-                <p className="text-sm text-slate-500">Display a persistent red border around the viewport.</p>
-              </div>
-              <ToggleSwitch checked={visualAlert} onChange={toggleVisual} />
-            </div>
+            <ToggleSwitch checked={visualAlert} onChange={toggleVisual} />
           </div>
         </div>
 
         {/* PRIVACY SETTINGS CARD */}
         <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-6">
-            <div className="text-[#3B82F6]">
-              <Lock size={24} strokeWidth={2.5} />
-            </div>
+            <div className="text-[#3B82F6]"><Lock size={24} strokeWidth={2.5} /></div>
             <h3 className="font-bold text-[#0F172A] text-lg">Privacy Settings</h3>
           </div>
-
           <div className="flex justify-between items-start gap-8 bg-[#F8FAFC] p-6 rounded-2xl border border-slate-100">
             <div>
               <h4 className="font-bold text-[#0F172A] mb-2">Local Neural Processing</h4>
               <p className="text-sm text-slate-500 leading-relaxed">
-                All video streams stay on your device. VisionGuard AI will <span className="font-semibold text-slate-700">not send any data to the cloud</span> for analysis. Turning this off may reduce performance on older hardware.
+                All video streams stay on your device. VisionGuard AI will not send any data to the cloud.
               </p>
             </div>
             <div className="mt-1">
-              <ToggleSwitch checked={true} onChange={() => alert("Local processing is mandatory for your privacy.")} />
+              <ToggleSwitch checked={true} onChange={() => alert("Local processing is mandatory.")} />
             </div>
           </div>
         </div>
 
         {/* BOTTOM BUTTONS */}
         <div className="flex items-center justify-end gap-6 pt-4">
-          <button 
-            onClick={handleDiscard}
-            className="text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm"
-          >
-            Discard Changes
-          </button>
-          <button 
-            onClick={handleSave}
-            className="bg-[#3B82F6] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md hover:shadow-lg active:scale-95 text-sm"
-          >
-            Save Settings
-          </button>
+          <button onClick={handleDiscard} className="text-slate-500 font-bold hover:text-slate-800 transition-colors text-sm">Discard Changes</button>
+          <button onClick={handleSave} className="bg-[#3B82F6] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md active:scale-95 text-sm">Save Settings</button>
         </div>
 
       </div>
