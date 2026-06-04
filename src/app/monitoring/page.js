@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Script from "next/script";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -20,6 +21,9 @@ export default function MonitoringPage() {
   const [goodCount, setGoodCount] = useState(0);
   const [badCount, setBadCount] = useState(0);
   const [slouchDistance, setSlouchDistance] = useState(0);
+  const [startTime, setStartTime] = useState(null);
+
+  const router = useRouter();
 
   const { resolution, selectedCameraId, soundAlert, cooldown, visualAlert } = useSettingsStore();
 
@@ -126,14 +130,23 @@ export default function MonitoringPage() {
           
           let warnaGaris = "#4ade80";
 
-          // --- LOGIKA BUNGKUK ---
-          if (verticalDist < 100) {
+          // --- LOGIKA BUNGKUK DENGAN HYSTERESIS ---
+          // Mencegah fluktuasi (spam notif) saat nilai berada di batas threshold
+          let isSlouchingNow = isSlouchingRef.current;
+          
+          if (verticalDist < 135) {
+            isSlouchingNow = true;
+          } else if (verticalDist > 145) {
+            isSlouchingNow = false;
+          }
+
+          if (isSlouchingNow) {
             warnaGaris = "#ef4444";
             setBadCount((prev) => prev + 1);
             setCurrentStatus("Poor (Slouching)");
 
             const now = Date.now();
-            const cooldownMs = (cooldown || 0) * 1000;
+            const cooldownMs = (cooldown || 5) * 1000; // Default minimal 5 detik agar tidak spam suara
 
             if (!isSlouchingRef.current) {
               if (visualAlert) showDesktopNotification();
@@ -144,7 +157,6 @@ export default function MonitoringPage() {
               if (soundAlert) playAlertSound();
               lastAlertTimeRef.current = now;
             }
-
           } else {
             setGoodCount((prev) => prev + 1);
             setCurrentStatus("Healthy (Upright)");
@@ -158,7 +170,8 @@ export default function MonitoringPage() {
       }
     }
     if (window.runDetection) {
-      setTimeout(detectFrame, 200); 
+      // Dipercepat ke 50ms agar pergerakan dan statistik merespons dengan sangat realtime
+      setTimeout(detectFrame, 50); 
     }
   };
 
@@ -177,12 +190,45 @@ export default function MonitoringPage() {
       videoRef.current.load(); 
     }
 
+    // --- SIMPAN DATA KE ANALISIS ---
+    saveSession();
+
     setIsMonitoring(false);
     setCurrentStatus("Waiting...");
     
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
+  };
+
+  const saveSession = async () => {
+    if (goodCount === 0 && badCount === 0) return;
+
+    try {
+      const endTime = new Date();
+      const durationSeconds = Math.floor((endTime - new Date(startTime)) / 1000);
+      
+      // Konversi frame count ke detik (interval 50ms = 0.05s per frame)
+      const goodSec = Math.round(goodCount * 0.05);
+      const badSec = Math.round(badCount * 0.05);
+
+      await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startTime: new Date(startTime).toISOString(),
+          endTime: endTime.toISOString(),
+          duration: durationSeconds,
+          goodPostureSeconds: goodSec,
+          badPostureSeconds: badSec,
+        }),
+      });
+
+      // Redirect ke halaman analisis
+      router.push("/analytics");
+    } catch (error) {
+      console.error("Gagal menyimpan sesi:", error);
     }
   };
 
@@ -210,13 +256,27 @@ export default function MonitoringPage() {
           });
       }
 
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Browser API untuk kamera tidak didukung.");
+      }
+
       const videoConstraints = { width: { ideal: parseInt(resolution) || 640 } };
       if (selectedCameraId) videoConstraints.deviceId = { exact: selectedCameraId };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: false
-      });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: false
+        });
+      } catch (streamErr) {
+        console.warn("Kamera spesifik gagal diakses, mencoba setelan default...", streamErr);
+        // Fallback jika id kamera spesifik atau resolusi spesifik tidak didukung
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false
+        });
+      }
 
       streamRef.current = stream;
 
@@ -225,15 +285,17 @@ export default function MonitoringPage() {
         setIsMonitoring(true);
         setGoodCount(0);
         setBadCount(0);
+        setStartTime(Date.now());
         window.runDetection = true;
         
         videoRef.current.onloadedmetadata = () => {
+            videoRef.current.play().catch(e => console.error("Video play error:", e));
             detectFrame();
         };
       }
     } catch (err) {
       console.error("Gagal:", err);
-      alert("Gagal mengakses kamera. Jika lampu kamera masih menyala, tutup browser sejenak lalu buka kembali.");
+      alert("Gagal mengakses kamera. Pastikan browser memiliki izin kamera, atau tutup aplikasi lain yang sedang menggunakan kamera.");
       setCurrentStatus("Waiting...");
     } finally {
       setIsStarting(false);
