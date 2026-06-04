@@ -41,7 +41,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const res = await fetch("/api/sessions");
+        const res = await fetch("/api/sessions", { cache: "no-store" });
         if (!res.ok) throw new Error("Gagal memuat data");
         const data = await res.json();
         setSessions(data);
