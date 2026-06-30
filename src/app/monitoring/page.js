@@ -9,7 +9,7 @@ import { useSettingsStore } from "@/store/useSettingsStore";
 // --- KONSTANTA KONFIGURASI (bukan hardcode tersebar) ---
 const DETECTION_INTERVAL_MS = 50;         // Interval deteksi frame (ms)
 const SECONDS_PER_FRAME = DETECTION_INTERVAL_MS / 1000; // 0.05 detik per frame
-const CALIBRATION_DURATION_MS = 3000;     // Durasi kalibrasi (3 detik)
+const CALIBRATION_DURATION_MS = 2000;     // Durasi kalibrasi (2 detik)
 const MIN_KEYPOINT_CONFIDENCE = 0.3;      // Minimum confidence score keypoint
 const SLOUCH_RATIO_THRESHOLD = 0.75;      // Bungkuk jika rasio < 75% dari baseline
 const RECOVERY_RATIO_THRESHOLD = 0.82;    // Tegak kembali jika rasio > 82% dari baseline
@@ -26,7 +26,6 @@ export default function MonitoringPage() {
 
   // --- State Kalibrasi ---
   const [isCalibrating, setIsCalibrating] = useState(false);
-  const [calibrationCountdown, setCalibrationCountdown] = useState(3);
   const baselineRatioRef = useRef(null);
   const calibrationSamplesRef = useRef([]);
   const calibrationStartTimeRef = useRef(null);
@@ -173,14 +172,13 @@ export default function MonitoringPage() {
             calibrationSamplesRef.current.push(ratio);
             setCurrentRatio(parseFloat(ratio.toFixed(2)));
             
-            // Update countdown
+            // Hitung elapsed time
             const elapsed = Date.now() - calibrationStartTimeRef.current;
-            const remaining = Math.max(0, Math.ceil((CALIBRATION_DURATION_MS - elapsed) / 1000));
-            setCalibrationCountdown(remaining);
 
-            // Warna biru saat kalibrasi
-            drawSkeleton(ctx, lEar, rEar, lShoulder, rShoulder, "#3B82F6");
-            setCurrentStatus(`Kalibrasi... Duduk tegak! (${remaining}s)`);
+            // Beri visual hijau (seolah-olah sudah monitoring) agar terasa instan
+            drawSkeleton(ctx, lEar, rEar, lShoulder, rShoulder, "#4ade80");
+            setCurrentStatus("Menyiapkan baseline...");
+            setGoodCount((prev) => prev + 1); // Anggap healthy selama kalibrasi diam-diam
 
             // Cek apakah kalibrasi sudah selesai
             if (elapsed >= CALIBRATION_DURATION_MS) {
@@ -319,7 +317,7 @@ export default function MonitoringPage() {
   const initAI = async () => {
     if (isStarting) return;
 
-    if (!window.poseDetection || !window.tf) {
+    if (!aiReady || !detectorRef.current) {
       alert("⏳ Mesin AI sedang dimuat. Tunggu beberapa detik lalu klik Start lagi.");
       return;
     }
@@ -329,16 +327,9 @@ export default function MonitoringPage() {
     }
     
     setIsStarting(true);
-    setCurrentStatus("Memulai AI & Kamera...");
+    setCurrentStatus("Menyalakan kamera...");
 
     try {
-      const model = window.poseDetection.SupportedModels.MoveNet;
-      
-      if (!detectorRef.current) {
-          detectorRef.current = await window.poseDetection.createDetector(model, {
-            modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          });
-      }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error("Browser API untuk kamera tidak didukung.");
@@ -374,10 +365,9 @@ export default function MonitoringPage() {
         // --- MULAI FASE KALIBRASI ---
         setIsCalibrating(true);
         setIsMonitoring(true);
-        setCalibrationCountdown(Math.ceil(CALIBRATION_DURATION_MS / 1000));
         calibrationSamplesRef.current = [];
         calibrationStartTimeRef.current = null; // Timer dimulai saat sampel pertama valid
-        setCurrentStatus("Kalibrasi... Duduk tegak!");
+        setCurrentStatus("Menganalisis postur...");
         
         videoRef.current.onloadedmetadata = () => {
             videoRef.current.play().catch(e => console.error("Video play error:", e));
@@ -398,7 +388,34 @@ export default function MonitoringPage() {
     else initAI();
   };
 
+  // --- PRELOAD AI MODEL saat halaman dibuka (bukan saat klik START) ---
+  const [aiReady, setAiReady] = useState(false);
   useEffect(() => {
+    const preloadModel = async () => {
+      // Tunggu sampai script TF.js selesai dimuat
+      const waitForTF = () => new Promise((resolve) => {
+        const check = () => {
+          if (window.poseDetection && window.tf) resolve();
+          else setTimeout(check, 200);
+        };
+        check();
+      });
+
+      try {
+        await waitForTF();
+        if (!detectorRef.current) {
+          const model = window.poseDetection.SupportedModels.MoveNet;
+          detectorRef.current = await window.poseDetection.createDetector(model, {
+            modelType: window.poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+          });
+        }
+        setAiReady(true);
+      } catch (e) {
+        console.error("Gagal preload AI model:", e);
+      }
+    };
+
+    preloadModel();
     return () => stopCameraLogic();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -419,14 +436,9 @@ export default function MonitoringPage() {
           <h2 className="text-2xl font-black text-slate-800">Live Monitoring</h2>
           <p className="text-slate-400 text-sm">Postur lu dipantau pakai MoveNet.</p>
         </div>
-        {isMonitoring && !isCalibrating && (
+        {isMonitoring && (
           <div className="flex items-center gap-2 bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full text-xs font-bold animate-pulse">
             ● System Active
-          </div>
-        )}
-        {isCalibrating && (
-          <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-1.5 rounded-full text-xs font-bold animate-pulse">
-            📐 Kalibrasi...
           </div>
         )}
       </div>
@@ -548,16 +560,16 @@ export default function MonitoringPage() {
 
           <button
             onClick={handleToggle}
-            disabled={isStarting} 
+            disabled={isStarting || (!isMonitoring && !aiReady)} 
             className={`w-full font-black py-5 rounded-[1.5rem] transition-all shadow-xl hover:scale-[1.02] active:scale-95 ${
-              isStarting 
+              isStarting || (!isMonitoring && !aiReady)
                 ? "bg-slate-300 text-slate-500 cursor-not-allowed border-none shadow-none" 
                 : isMonitoring
                 ? "bg-red-50 text-red-600 border-2 border-red-100"
                 : "bg-blue-600 text-white"
             }`}
           >
-            {isStarting ? "⏳ TUNGGU SEBENTAR..." : isMonitoring ? "⏹ STOP MONITORING" : "▶ START MONITORING"}
+            {!aiReady && !isMonitoring ? "⏳ MEMUAT AI MODEL..." : isStarting ? "⏳ MENYALAKAN KAMERA..." : isMonitoring ? "⏹ STOP MONITORING" : "▶ START MONITORING"}
           </button>
         </div>
       </div>
