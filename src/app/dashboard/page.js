@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Play } from "lucide-react";
@@ -9,6 +10,65 @@ import { HealthCard, StreakCard, ScoreCard } from "@/components/StatCard";
 export default function DashboardPage() {
   const { data: session } = useSession();
   const userDisplay = session?.user?.name || session?.user?.email || "Guest";
+
+  const [stats, setStats] = useState({
+    healthPercent: 0,
+    streakDays: 0,
+    focusScore: 0,
+  });
+
+  // Fetch data nyata dari API
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch("/api/sessions", { cache: "no-store" });
+        if (!res.ok) return;
+        const sessions = await res.json();
+
+        if (!sessions || sessions.length === 0) return;
+
+        // --- HEALTH: avgScore dari sesi terakhir ---
+        const latestScore = Math.round(sessions[0]?.avgScore || 0);
+
+        // --- STREAK: hitung hari berturut-turut ada sesi (dari hari ini mundur) ---
+        const uniqueDays = new Set(
+          sessions.map((s) =>
+            new Date(s.startTime).toLocaleDateString("id-ID")
+          )
+        );
+        const today = new Date();
+        let streakCount = 0;
+        for (let i = 0; i < 365; i++) {
+          const checkDate = new Date(today);
+          checkDate.setDate(today.getDate() - i);
+          const dateStr = checkDate.toLocaleDateString("id-ID");
+          if (uniqueDays.has(dateStr)) {
+            streakCount++;
+          } else {
+            // Untuk hari pertama (hari ini), jika belum ada sesi, lanjut cek kemarin
+            if (i === 0) continue;
+            break;
+          }
+        }
+
+        // --- SCORE: rata-rata avgScore dari 7 sesi terakhir ---
+        const recentSessions = sessions.slice(0, 7);
+        const avgOfRecent =
+          recentSessions.reduce((sum, s) => sum + (s.avgScore || 0), 0) /
+          recentSessions.length;
+
+        setStats({
+          healthPercent: latestScore,
+          streakDays: streakCount,
+          focusScore: Math.round(avgOfRecent),
+        });
+      } catch (error) {
+        console.error("Gagal memuat statistik dashboard:", error);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   return (
     <DashboardLayout>
@@ -44,11 +104,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* STATS CARDS */}
+      {/* STATS CARDS — Data Real dari Database */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <HealthCard percent={71} />
-        <StreakCard days={7} />
-        <ScoreCard score={92} />
+        <HealthCard percent={stats.healthPercent} />
+        <StreakCard days={stats.streakDays} />
+        <ScoreCard score={stats.focusScore} />
       </div>
     </DashboardLayout>
   );

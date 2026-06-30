@@ -12,16 +12,18 @@ import { TrendingUp, Flame } from "lucide-react";
  *  - focusScore: number (for "score" variant)
  */
 
-export function HealthCard({ percent = 71 }) {
+export function HealthCard({ percent = 0 }) {
   const circumference = 2 * Math.PI * 58; // ~364
 
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
       <div className="flex justify-between w-full mb-6">
         <span className="text-sm font-bold text-slate-800">Daily Health</span>
-        <span className="text-[#22C55E] text-xs font-bold flex items-center gap-1">
-          <TrendingUp size={12} /> +12%
-        </span>
+        {percent > 0 && (
+          <span className="text-[#22C55E] text-xs font-bold flex items-center gap-1">
+            <TrendingUp size={12} /> Good
+          </span>
+        )}
       </div>
       <div className="relative w-32 h-32 flex items-center justify-center">
         <svg className="w-full h-full transform -rotate-90">
@@ -45,7 +47,7 @@ export function HealthCard({ percent = 71 }) {
   );
 }
 
-export function StreakCard({ days = 7 }) {
+export function StreakCard({ days = 0 }) {
   return (
     <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm">
       <div className="flex justify-between items-start mb-10">
@@ -66,7 +68,7 @@ export function StreakCard({ days = 7 }) {
   );
 }
 
-export function ScoreCard({ score = 92 }) {
+export function ScoreCard({ score = 0 }) {
   const getLabel = (s) => {
     if (s >= 90) return "Excellent Performance";
     if (s >= 70) return "Good Performance";
