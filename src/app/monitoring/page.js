@@ -164,6 +164,12 @@ export default function MonitoringPage() {
             setCurrentStatus("Adjust your position...");
           } else if (isCalibrating) {
             // === FASE KALIBRASI: Kumpulkan sampel rasio ===
+
+            // Mulai timer kalibrasi saat SAMPEL PERTAMA berhasil (bukan saat kamera nyala)
+            if (calibrationStartTimeRef.current === null) {
+              calibrationStartTimeRef.current = Date.now();
+            }
+
             calibrationSamplesRef.current.push(ratio);
             setCurrentRatio(parseFloat(ratio.toFixed(2)));
             
@@ -370,7 +376,7 @@ export default function MonitoringPage() {
         setIsMonitoring(true);
         setCalibrationCountdown(Math.ceil(CALIBRATION_DURATION_MS / 1000));
         calibrationSamplesRef.current = [];
-        calibrationStartTimeRef.current = Date.now();
+        calibrationStartTimeRef.current = null; // Timer dimulai saat sampel pertama valid
         setCurrentStatus("Kalibrasi... Duduk tegak!");
         
         videoRef.current.onloadedmetadata = () => {
